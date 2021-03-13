@@ -10,11 +10,14 @@ import (
 	"time"
 )
 
+//结构体，对应接口，以及过期时间
 type Item struct {
 	Object     interface{}
 	Expiration int64
 }
 
+//检查是否过期
+//当前的时间大于配置的时间
 // Returns true if the item has expired.
 func (item Item) Expired() bool {
 	if item.Expiration == 0 {
@@ -32,6 +35,7 @@ const (
 	DefaultExpiration time.Duration = 0
 )
 
+//成员变量是cache指针？
 type Cache struct {
 	*cache
 	// If this is confusing, see the comment at the bottom of New()
@@ -39,6 +43,7 @@ type Cache struct {
 
 type cache struct {
 	defaultExpiration time.Duration
+    //Item是Map类型
 	items             map[string]Item
 	mu                sync.RWMutex
 	onEvicted         func(string, interface{})
@@ -48,6 +53,7 @@ type cache struct {
 // Add an item to the cache, replacing any existing item. If the duration is 0
 // (DefaultExpiration), the cache's default expiration time is used. If it is -1
 // (NoExpiration), the item never expires.
+//定义了方法cache类型的指针可以调用Set
 func (c *cache) Set(k string, x interface{}, d time.Duration) {
 	// "Inlining" of set
 	var e int64
@@ -57,7 +63,9 @@ func (c *cache) Set(k string, x interface{}, d time.Duration) {
 	if d > 0 {
 		e = time.Now().Add(d).UnixNano()
 	}
+    //互斥访问item
 	c.mu.Lock()
+    //通过key:value方式初始化了一个Item,Object 和对应的超时时间
 	c.items[k] = Item{
 		Object:     x,
 		Expiration: e,
@@ -67,6 +75,7 @@ func (c *cache) Set(k string, x interface{}, d time.Duration) {
 	c.mu.Unlock()
 }
 
+//一个Set和set，是否使用互斥访问
 func (c *cache) set(k string, x interface{}, d time.Duration) {
 	var e int64
 	if d == DefaultExpiration {
@@ -89,6 +98,7 @@ func (c *cache) SetDefault(k string, x interface{}) {
 
 // Add an item to the cache only if an item doesn't already exist for the given
 // key, or if the existing item has expired. Returns an error otherwise.
+//Add方法是在cache中增加item，如果item存在返回错误
 func (c *cache) Add(k string, x interface{}, d time.Duration) error {
 	c.mu.Lock()
 	_, found := c.get(k)
@@ -103,6 +113,7 @@ func (c *cache) Add(k string, x interface{}, d time.Duration) error {
 
 // Set a new value for the cache key only if it already exists, and the existing
 // item hasn't expired. Returns an error otherwise.
+//如果item存在，更新value
 func (c *cache) Replace(k string, x interface{}, d time.Duration) error {
 	c.mu.Lock()
 	_, found := c.get(k)
@@ -117,9 +128,11 @@ func (c *cache) Replace(k string, x interface{}, d time.Duration) error {
 
 // Get an item from the cache. Returns the item or nil, and a bool indicating
 // whether the key was found.
+//根据string，返回value
 func (c *cache) Get(k string) (interface{}, bool) {
 	c.mu.RLock()
 	// "Inlining" of get and Expired
+    //获取Map
 	item, found := c.items[k]
 	if !found {
 		c.mu.RUnlock()
@@ -145,7 +158,7 @@ func (c *cache) GetWithExpiration(k string) (interface{}, time.Time, bool) {
 	item, found := c.items[k]
 	if !found {
 		c.mu.RUnlock()
-		return nil, time.Time{}, false
+		return nil, time.Time{}, false 
 	}
 
 	if item.Expiration > 0 {
@@ -164,6 +177,7 @@ func (c *cache) GetWithExpiration(k string) (interface{}, time.Time, bool) {
 	c.mu.RUnlock()
 	return item.Object, time.Time{}, true
 }
+
 
 func (c *cache) get(k string) (interface{}, bool) {
 	item, found := c.items[k]
@@ -184,6 +198,7 @@ func (c *cache) get(k string) (interface{}, bool) {
 // item's value is not an integer, if it was not found, or if it is not
 // possible to increment it by n. To retrieve the incremented value, use one
 // of the specialized methods, e.g. IncrementInt64.
+//将cache中的整数增加
 func (c *cache) Increment(k string, n int64) error {
 	c.mu.Lock()
 	v, found := c.items[k]
@@ -191,6 +206,8 @@ func (c *cache) Increment(k string, n int64) error {
 		c.mu.Unlock()
 		return fmt.Errorf("Item %s not found", k)
 	}
+    //v.Object.(type) 获取v的类型
+    //然后根据类型进行转换，并相加
 	switch v.Object.(type) {
 	case int:
 		v.Object = v.Object.(int) + int(n)
@@ -219,9 +236,11 @@ func (c *cache) Increment(k string, n int64) error {
 	case float64:
 		v.Object = v.Object.(float64) + float64(n)
 	default:
+        //不是整数类型，返回错误
 		c.mu.Unlock()
 		return fmt.Errorf("The value for %s is not an integer", k)
 	}
+    //然后将value写回
 	c.items[k] = v
 	c.mu.Unlock()
 	return nil
@@ -1038,6 +1057,7 @@ func (c *cache) LoadFile(fname string) error {
 func (c *cache) Items() map[string]Item {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+    //创建一个新的映射，长度为len(c.items)
 	m := make(map[string]Item, len(c.items))
 	now := time.Now().UnixNano()
 	for k, v := range c.items {

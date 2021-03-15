@@ -1060,6 +1060,7 @@ func (c *cache) Items() map[string]Item {
     //创建一个新的映射，长度为len(c.items)
 	m := make(map[string]Item, len(c.items))
 	now := time.Now().UnixNano()
+    //遍历映射
 	for k, v := range c.items {
 		// "Inlining" of Expired
 		if v.Expiration > 0 {
@@ -1084,6 +1085,7 @@ func (c *cache) ItemCount() int {
 // Delete all items from the cache.
 func (c *cache) Flush() {
 	c.mu.Lock()
+    //go自行处理回收
 	c.items = map[string]Item{}
 	c.mu.Unlock()
 }
